@@ -3743,9 +3743,9 @@
       "timeA": "Argentina",
       "timeB": "Cabo Verde",
       "date": "",
-      "resultado": "",
-      "gols_a": "",
-      "gols_b": "",
+      "resultado": "E",
+      "gols_a": "1",
+      "gols_b": "1",
       "guesses": {
         "Alex": "A",
         "Bonfim": "A",
