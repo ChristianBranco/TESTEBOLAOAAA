@@ -149,18 +149,18 @@
   .mm-team.loser .mm-team-name{color:#666;}
   .mm-team.pending{opacity:.55;}
 
-  /* ---- Chaveamento (bracket) FIFA style ---- */
-  .bracket-wrap{background:#fff;border-radius:16px;padding:20px 8px;box-shadow:0 8px 40px rgba(0,0,0,.4);
+  /* ---- Chaveamento (bracket) FIFA style, com conectores SVG ---- */
+  .bracket-wrap{background:#fff;border-radius:16px;padding:20px 12px;box-shadow:0 8px 40px rgba(0,0,0,.4);
     overflow-x:auto;color:#1a2e1d;}
-  .bracket-scroll{display:flex;align-items:stretch;gap:0;min-width:1180px;}
-  .bracket-col{display:flex;flex-direction:column;justify-content:space-around;min-width:170px;padding:0 10px;position:relative;}
-  .bracket-col-final{min-width:190px;justify-content:center;}
-  .bracket-round-title{position:sticky;top:0;text-align:center;font-family:'Bebas Neue',sans-serif;
-    letter-spacing:1.5px;font-size:13px;color:#0d6030;margin-bottom:10px;text-transform:uppercase;}
-  .bmatch{border:1px solid #e0e8e2;border-radius:10px;overflow:hidden;margin:8px 0;background:#fbfcfb;
-    box-shadow:0 2px 8px rgba(0,0,0,.06);position:relative;animation:popIn .3s ease;}
-  .bmatch::after{content:"";position:absolute;top:50%;right:-11px;width:11px;height:2px;background:#c7d6cb;}
-  .bracket-col-final .bmatch::after{display:none;}
+  .bracket-outer{display:flex;align-items:flex-start;width:max-content;}
+  .bracket-roundcol{width:168px;flex-shrink:0;}
+  .bracket-roundcol-final{width:186px;flex-shrink:0;}
+  .bracket-gap{flex-shrink:0;position:relative;}
+  .bracket-round-title{text-align:center;font-family:'Bebas Neue',sans-serif;
+    letter-spacing:1.5px;font-size:13px;color:#0d6030;margin-bottom:12px;text-transform:uppercase;}
+  .bracket-stage{position:relative;}
+  .bmatch{border:1px solid #e0e8e2;border-radius:10px;overflow:hidden;background:#fbfcfb;
+    box-shadow:0 2px 8px rgba(0,0,0,.06);position:absolute;left:0;right:0;animation:popIn .3s ease;}
   .bmatch-row{display:flex;align-items:center;gap:6px;padding:6px 8px;font-size:11.5px;font-weight:700;color:#2a3a2d;}
   .bmatch-row+.bmatch-row{border-top:1px solid #eef2ee;}
   .bmatch-row.win{background:#eaf7ec;color:#0f5e26;}
@@ -384,15 +384,33 @@ function App() {
     </div>
   );
 
-  // ---------- Chaveamento (bracket estilo FIFA) ----------
-  const BracketMatch = ({game, isFinal}) => {
+  // ---------- Chaveamento (bracket estilo FIFA, com conectores SVG) ----------
+  const UNIT = 74;     // altura reservada por confronto "folha" (32avos, 8 por lado)
+  const CARD_H = 54;   // altura visual do card de confronto
+  const GAP_W = 34;    // largura do espaço de conexão entre colunas
+
+  // centros verticais (em px) de cada partida, por rodada, dado N confrontos-folha
+  const buildCenters = (N) => {
+    const rounds = [];
+    rounds[0] = Array.from({length:N}, (_,i) => i*UNIT + UNIT/2);
+    let cur = rounds[0];
+    while (cur.length > 1) {
+      const next = [];
+      for (let i=0; i<cur.length; i+=2) next.push((cur[i]+cur[i+1])/2);
+      rounds.push(next);
+      cur = next;
+    }
+    return rounds; // rounds[0]=folhas ... rounds[last]=1 elemento
+  };
+
+  const BracketMatch = ({game, top, isFinal}) => {
     if (!game) return null;
     const nameA = game.timeA_resolved || game.timeA;
     const nameB = game.timeB_resolved || game.timeB;
     const winner = getWinner(game);
     const hasScore = game.gols_a!=="" && game.gols_b!=="";
     return (
-      <div className={`bmatch ${isFinal?"bracket-final-card":""}`}>
+      <div className={`bmatch ${isFinal?"bracket-final-card":""}`} style={{top, height:CARD_H}}>
         <div className={`bmatch-row ${winner===0?"win":winner===1?"lose":""}`}>
           <Flag pais={nameA} className="bmatch-flag"/>
           <span className="bmatch-name">{nameA}</span>
@@ -409,12 +427,35 @@ function App() {
     );
   };
 
-  const BracketColumn = ({title, games, isFinal}) => (
-    <div className={`bracket-col ${isFinal?"bracket-col-final":""}`}>
+  const BracketColumn = ({title, games, centers, height, isFinal}) => (
+    <div className={isFinal?"bracket-roundcol-final":"bracket-roundcol"}>
       <div className="bracket-round-title">{title}</div>
-      {games.map(g => <BracketMatch key={g?g.id:Math.random()} game={g} isFinal={isFinal}/>)}
+      <div className="bracket-stage" style={{height}}>
+        {games.map((g,i) => <BracketMatch key={g?g.id:i} game={g} top={centers[i]-CARD_H/2} isFinal={isFinal}/>)}
+      </div>
     </div>
   );
+
+  // desenha os conectores em "cotovelo" entre uma coluna com feeders (2N confrontos) e a coluna seguinte (N)
+  // dir=1: feeders à esquerda do gap, alvo à direita (lado esquerdo da chave)
+  // dir=-1: feeders à direita do gap, alvo à esquerda (lado direito da chave, espelhado)
+  const BracketGap = ({feederCenters, targetCenters, height, dir}) => {
+    const mid = GAP_W/2;
+    const x = (v) => dir>0 ? v : (GAP_W - v);
+    const paths = [];
+    for (let i=0; i<targetCenters.length; i++) {
+      const y1 = feederCenters[i*2], y2 = feederCenters[i*2+1], yT = targetCenters[i];
+      paths.push(
+        <path key={i} d={`M ${x(0)} ${y1} H ${x(mid)} V ${y2} H ${x(0)} M ${x(mid)} ${(y1+y2)/2} H ${x(GAP_W)}`}
+          fill="none" stroke="#c7d6cb" strokeWidth="2"/>
+      );
+    }
+    return (
+      <div className="bracket-gap" style={{width:GAP_W, height}}>
+        <svg width={GAP_W} height={height} style={{display:"block"}}>{paths}</svg>
+      </div>
+    );
+  };
 
   const bracketPage = () => {
     const g32 = gamesOfPhase("MATA-MATA 32");
@@ -431,21 +472,33 @@ function App() {
 
     const champion = final && final.passou ? final.passou : null;
 
+    // centros: rounds[0]=32avos(8), [1]=oitavas(4), [2]=quartas(2), [3]=semifinal(1)
+    const rounds = buildCenters(8);
+    const H = 8*UNIT;
+
     return (
       <div>
         <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:32,color:"#ffd700",letterSpacing:3,marginBottom:6,textShadow:"0 2px 12px rgba(255,215,0,.3)"}}>🌐 Chaveamento</div>
-        <div style={{color:"#6db882",fontSize:12,marginBottom:16}}>Mata-mata completo — os vencedores avançam automaticamente conforme os placares são preenchidos na planilha.</div>
+        <div style={{color:"#6db882",fontSize:12,marginBottom:16}}>Mata-mata completo — os vencedores avançam automaticamente, com as linhas conectando cada confronto à fase seguinte conforme os placares são preenchidos na planilha.</div>
         <div className="bracket-wrap">
-          <div className="bracket-scroll">
-            <BracketColumn title="32avos" games={left32}/>
-            <BracketColumn title="Oitavas" games={left16}/>
-            <BracketColumn title="Quartas" games={left8}/>
-            <BracketColumn title="Semifinal" games={left4}/>
-            <BracketColumn title="Final" games={final?[final]:[]} isFinal/>
-            <BracketColumn title="Semifinal" games={right4}/>
-            <BracketColumn title="Quartas" games={right8}/>
-            <BracketColumn title="Oitavas" games={right16}/>
-            <BracketColumn title="32avos" games={right32}/>
+          <div className="bracket-outer">
+            <BracketColumn title="32avos" games={left32} centers={rounds[0]} height={H}/>
+            <BracketGap feederCenters={rounds[0]} targetCenters={rounds[1]} height={H} dir={1}/>
+            <BracketColumn title="Oitavas" games={left16} centers={rounds[1]} height={H}/>
+            <BracketGap feederCenters={rounds[1]} targetCenters={rounds[2]} height={H} dir={1}/>
+            <BracketColumn title="Quartas" games={left8} centers={rounds[2]} height={H}/>
+            <BracketGap feederCenters={rounds[2]} targetCenters={rounds[3]} height={H} dir={1}/>
+            <BracketColumn title="Semifinal" games={left4} centers={rounds[3]} height={H}/>
+            <BracketGap feederCenters={[rounds[3][0],rounds[3][0]]} targetCenters={[rounds[3][0]]} height={H} dir={1}/>
+            <BracketColumn title="Final" games={final?[final]:[]} centers={[rounds[3][0]]} height={H} isFinal/>
+            <BracketGap feederCenters={[rounds[3][0],rounds[3][0]]} targetCenters={[rounds[3][0]]} height={H} dir={-1}/>
+            <BracketColumn title="Semifinal" games={right4} centers={rounds[3]} height={H}/>
+            <BracketGap feederCenters={rounds[2]} targetCenters={rounds[3]} height={H} dir={-1}/>
+            <BracketColumn title="Quartas" games={right8} centers={rounds[2]} height={H}/>
+            <BracketGap feederCenters={rounds[1]} targetCenters={rounds[2]} height={H} dir={-1}/>
+            <BracketColumn title="Oitavas" games={right16} centers={rounds[1]} height={H}/>
+            <BracketGap feederCenters={rounds[0]} targetCenters={rounds[1]} height={H} dir={-1}/>
+            <BracketColumn title="32avos" games={right32} centers={rounds[0]} height={H}/>
           </div>
         </div>
         {champion && (
